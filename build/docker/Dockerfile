@@ -1,6 +1,6 @@
 FROM openjdk:8-jre
 
-LABEL MAINTAINER="Kushal Mehta <kushal.mehta@brodos.net>"
+LABEL MAINTAINER="Kushal Mehta <kushal.mt@gmail.com>"
 EXPOSE 8080
 
 COPY build/docker/context-start /opt/context-start
@@ -10,12 +10,12 @@ RUN apt-get update \
                                                   curl \
                                                   jq \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /etc/brodos-sku-ean-mapping-tool/ \
+    && mkdir -p /etc/test-tool/ \
     && mkdir -p /mnt/files \
     && mkdir -p /opt/data
 
-COPY target/brodos-sku-ean-mapping-tool-*.jar /opt/.
-COPY target/classes/application.properties /etc/brodos-sku-ean-mapping-tool/.
+COPY target/test-*.jar /opt/.
+COPY target/classes/application.properties /etc/test-tool/.
 COPY build/docker/context-start /opt/context-start
 RUN chmod a+x /opt/context-start 
 

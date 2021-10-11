@@ -1,1 +1,1 @@
-cd /opt/ ; java -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true -Xms256m -Xmx512m -jar /opt/brodos-sku-ean-mapping-tool-*.jar
+cd /opt/ ; java -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true -Xms256m -Xmx512m -jar /opt/test-*.jar

@@ -1,0 +1,100 @@
+# Default values for ..
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+ciEnvironmentSlug: ""
+
+annotations:
+  prometheus.io/port: "8080"
+  prometheus.io/scrape: "true"
+  prometheus.io/path: "/actuator/prometheus"
+  BRODOS-TEAM: "BGO"
+  BRODOS-VCS: "https://gitlab.brodos.net/bgo/brodos-sku-ean-mapping-tool"
+  BRODOS-COSTUNIT: "244410"
+
+image:
+  repository: gitlab-registry.brodos.net/bgo/brodos-sku-ean-mapping-tool
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+app:
+  port: 8080
+  livenessProbe: /actuator/health
+  readinessProbe: /actuator/health
+
+imagePullSecrets: 
+  - name: regcred
+#nameOverride: ""
+#fullnameOverride: ""
+
+env:  
+  ELASTICSEARCH_CLUSTERNAME: "null"
+  ELASTICSEARCH_HOST: "null"
+  ELASTICSEARCH_PORT: "null"
+  ELASTICSEARCH_SKUEANMAPPING_INDEX_NAME: "null"
+  ELASTICSEARCH_SKUEANMAPPING_INDEX_TYPE: "null"  
+  ENVIRONMENT: "null"
+  SKUEAN_DEST_CSV_PATH: "null"
+  SKUEAN_SOURCE_CSV_PATH: "null"
+  SPRING_ELASTICSEARCH_REST_URIS: "null"
+  FTP_SERVER: "null"
+  FTP_PATH: "null"
+  
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name:
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: project.brodos.net
+      paths: []
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+ingressTraefik:
+    enabled: false
+    host: null
+    middlewares:
+      - redirectscheme-to-https@file
+  
+
+resources: 
+   limits:
+     cpu: 500m
+     memory: 768Mi
+   requests:
+     cpu: 250m
+     memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

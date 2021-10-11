@@ -1,0 +1,166 @@
+stages:
+    - build
+    - packaging
+    - test
+    - publish
+    - deploy
+
+image: maven:3.6.3-jdk-8
+
+variables:
+    MAVEN_CLI_OPTS: "-s .m2/settings.xml --batch-mode"
+    MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+    IMAGE_NAME: gitlab-registry.brodos.net/bgo/brodos-sku-ean-mapping-tool:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
+
+cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+        - .m2/repository/
+
+build:
+    stage: build
+    script:
+        - mvn $MAVEN_CLI_OPTS clean install -DskipTests
+    artifacts:
+        paths:
+        - target/*.jar
+        - target/classes/application.properties
+
+docker-build:
+    stage: packaging
+    image: docker:18
+    services:
+        - docker:18-dind
+    script:
+        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN gitlab-registry.brodos.net
+        - docker build --cache-from $CI_REGISTRY_IMAGE:latest -t ${IMAGE_NAME} --tag $CI_REGISTRY_IMAGE:latest -f build/docker/Dockerfile .
+        - docker push ${IMAGE_NAME}
+        - docker push $CI_REGISTRY_IMAGE:latest
+    
+container_scan:
+    stage: test
+    image:
+        name: anchore/anchore-engine:v0.3.0
+        entrypoint: [""]
+    services:
+        - name: anchore/engine-db-preload:v0.3.0
+          alias: anchore-db
+
+    variables:
+        GIT_STRATEGY: none
+        ANCHORE_FAIL_ON_POLICY: "false"
+        ANCHORE_TIMEOUT: 500
+
+    script:
+        - |
+            curl -o /tmp/anchore_ci_tools.py https://raw.githubusercontent.com/anchore/ci-tools/v0.3.0/scripts/anchore_ci_tools.py
+            chmod +x /tmp/anchore_ci_tools.py
+            ln -s /tmp/anchore_ci_tools.py /usr/local/bin/anchore_ci_tools
+        - anchore_ci_tools --setup
+        - anchore-cli --u admin --p foobar registry add $CI_REGISTRY gitlab-ci-token $CI_JOB_TOKEN --skip-validate
+        - anchore_ci_tools --analyze --report --image ${IMAGE_NAME} --timeout ${ANCHORE_TIMEOUT}
+        - |
+            if [ "$ANCHORE_FAIL_ON_POLICY" == "true" ]; then
+            anchore-cli evaluate check ${IMAGE_NAME}
+            else
+            set +o pipefail
+            anchore-cli evaluate check ${IMAGE_NAME} | tee /dev/null
+            fi
+
+    artifacts:
+        name: ${CI_JOB_NAME}-${CI_COMMIT_REF_NAME}
+        paths:
+        - anchore-reports/*
+    allow_failure: true
+
+sonarqube-check:
+    stage: test
+    image:
+        name: sonarsource/sonar-scanner-cli:latest
+        entrypoint: [""]
+    script:
+        - sonar-scanner -Dsonar.java.binaries=./target/ -Dsonar.qualitygate.wait=true -Dsonar.projectKey=${CI_PROJECT_NAME} -Dsonar.projectVersion=${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
+    allow_failure: true
+    variables:
+        GIT_DEPTH: 0
+        
+anchore_reports:
+    stage: publish
+    image: alpine:latest
+    dependencies:
+        - container_scan
+
+    variables:
+        GIT_STRATEGY: none
+
+    script:
+        - apk add jq
+        - |
+            echo "Parsing anchore reports."
+            printf "\n%s\n" "The following OS packages are installed on ${IMAGE_NAME}:"
+            jq '[.content | sort_by(.package) | .[] | {package: .package, version: .version}]' anchore-reports/image-content-os-report.json || true
+            printf "\n%s\n" "The following vulnerabilites were found on ${IMAGE_NAME}:"
+            jq '[.vulnerabilities | group_by(.package) | .[] | {package: .[0].package, vuln: [.[].vuln]}]' anchore-reports/image-vuln-report.json || true
+
+de-bai1-k8s-staging:
+    image:
+        name: alpine/helm:3.1.2
+        entrypoint: [""]
+    stage: deploy
+    only:
+    - /^Branch_.[0-9]*.[0-9]$/
+    - master
+    environment:
+        name: de-bai1-staging        
+        kubernetes:
+            namespace: bgo
+    when: manual
+    script:
+        - |
+            helm upgrade --install --wait brodosskueantool-staging ./deployment/helm \
+            -n bgo \
+            --set ciEnvironmentSlug="${CI_ENVIRONMENT_SLUG}" \
+            --set replicaCount=1 \
+            --set env.ENVIRONMENT="staging" \
+            --set env.ELASTICSEARCH_CLUSTERNAME="${ELASTICSEARCH_CLUSTERNAME}" \
+            --set env.ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST}" \
+            --set env.ELASTICSEARCH_PORT="${ELASTICSEARCH_PORT}" \
+            --set env.ELASTICSEARCH_SKUEANMAPPING_INDEX_NAME="${ELASTICSEARCH_SKUEANMAPPING_INDEX_NAME}" \
+            --set env.ELASTICSEARCH_SKUEANMAPPING_INDEX_TYPE="${ELASTICSEARCH_SKUEANMAPPING_INDEX_TYPE}" \
+            --set env.SKUEAN_DEST_CSV_PATH="${SKUEAN_DEST_CSV_PATH}" \
+            --set env.SKUEAN_SOURCE_CSV_PATH="${SKUEAN_SOURCE_CSV_PATH}" \
+            --set env.SPRING_ELASTICSEARCH_REST_URIS="${SPRING_ELASTICSEARCH_REST_URIS}" \
+            --set env.FTP_SERVER="${FTP_SERVER}" \
+            --set env.FTP_PATH="${FTP_PATH}" \
+            --set image.tag="${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}"
+
+de-bai1-k8s-production:
+    image:
+        name: alpine/helm:3.1.2
+        entrypoint: [""]
+    stage: deploy
+    only:
+    - /^[0-9]*.[0-9]*.[0-9]+$/
+    environment:
+        name: de-bai1-prod        
+        kubernetes:
+            namespace: bgo
+    when: manual
+    script:
+        - |
+            helm upgrade --install --wait brodosskueantool-production ./deployment/helm \
+            -n bgo \
+            --set ciEnvironmentSlug="${CI_ENVIRONMENT_SLUG}" \
+            --set replicaCount=1 \
+            --set env.ENVIRONMENT="production" \
+            --set env.ELASTICSEARCH_CLUSTERNAME="${ELASTICSEARCH_CLUSTERNAME}" \
+            --set env.ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST}" \
+            --set env.ELASTICSEARCH_PORT="${ELASTICSEARCH_PORT}" \
+            --set env.ELASTICSEARCH_SKUEANMAPPING_INDEX_NAME="${ELASTICSEARCH_SKUEANMAPPING_INDEX_NAME}" \
+            --set env.ELASTICSEARCH_SKUEANMAPPING_INDEX_TYPE="${ELASTICSEARCH_SKUEANMAPPING_INDEX_TYPE}" \
+            --set env.SKUEAN_DEST_CSV_PATH="${SKUEAN_DEST_CSV_PATH}" \
+            --set env.SKUEAN_SOURCE_CSV_PATH="${SKUEAN_SOURCE_CSV_PATH}" \
+            --set env.SPRING_ELASTICSEARCH_REST_URIS="${SPRING_ELASTICSEARCH_REST_URIS}" \
+            --set env.FTP_SERVER="${FTP_SERVER}" \
+            --set env.FTP_PATH="${FTP_PATH}" \
+            --set image.tag="${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}"

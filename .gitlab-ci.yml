@@ -10,7 +10,7 @@ image: maven:3.6.3-jdk-8
 variables:
     MAVEN_CLI_OPTS: "-s .m2/settings.xml --batch-mode"
     MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
-    IMAGE_NAME: gitlab-registry.brodos.net/bgo/brodos-sku-ean-mapping-tool:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
+    IMAGE_NAME: gitlab-registry.test.net/example/test-tool:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
 
 cache:
     key: ${CI_COMMIT_REF_SLUG}
@@ -32,7 +32,7 @@ docker-build:
     services:
         - docker:18-dind
     script:
-        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN gitlab-registry.brodos.net
+        - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN gitlab-registry.test.net
         - docker build --cache-from $CI_REGISTRY_IMAGE:latest -t ${IMAGE_NAME} --tag $CI_REGISTRY_IMAGE:latest -f build/docker/Dockerfile .
         - docker push ${IMAGE_NAME}
         - docker push $CI_REGISTRY_IMAGE:latest
@@ -113,12 +113,12 @@ de-bai1-k8s-staging:
     environment:
         name: de-bai1-staging        
         kubernetes:
-            namespace: bgo
+            namespace: example
     when: manual
     script:
         - |
-            helm upgrade --install --wait brodosskueantool-staging ./deployment/helm \
-            -n bgo \
+            helm upgrade --install --wait testtool-staging ./deployment/helm \
+            -n example \
             --set ciEnvironmentSlug="${CI_ENVIRONMENT_SLUG}" \
             --set replicaCount=1 \
             --set env.ENVIRONMENT="staging" \
@@ -144,12 +144,12 @@ de-bai1-k8s-production:
     environment:
         name: de-bai1-prod        
         kubernetes:
-            namespace: bgo
+            namespace: example
     when: manual
     script:
         - |
-            helm upgrade --install --wait brodosskueantool-production ./deployment/helm \
-            -n bgo \
+            helm upgrade --install --wait testtool-production ./deployment/helm \
+            -n example \
             --set ciEnvironmentSlug="${CI_ENVIRONMENT_SLUG}" \
             --set replicaCount=1 \
             --set env.ENVIRONMENT="production" \
